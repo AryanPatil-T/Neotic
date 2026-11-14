@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY package.json bun.lock* package-lock.json* ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 COPY . .
 
@@ -25,4 +25,5 @@ ENV PORT=3000
 
 EXPOSE 3000
 
+CMD ["npx", "tsx", "server.ts"]
 CMD ["npx", "tsx", "server.ts"]
