@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import {
+  CONTENT_CATEGORIES,
   type AiEngine,
   type ImageSourceMode,
   PIPELINE_STAGES,
@@ -7,6 +8,7 @@ import {
   type ProductionMode,
   type QuoteTone,
   type SceneItem,
+  VISUAL_STYLES,
   type VideoRecord,
 } from '../src/shared/types.ts';
 import { type GeneratedShortConcept, generateShortConcept, recommendTrackWithAI } from './aiProviders.ts';
@@ -16,12 +18,13 @@ import {
   getAllVideos,
   getSettings,
   savePipelineJob,
+  saveSettings,
   upsertVideo,
 } from './db.ts';
-import { syncToGoogleSheets } from './excelSync.ts';
+import { pullUsedContentFromGoogleSheets, syncToGoogleSheets } from './excelSync.ts';
 import { acquireVerticalImage } from './mediaAcquisition.ts';
 import { checkNonRepetition, recordUsedContent } from './nonRepetition.ts';
-import { computeNextPublishSlots, uploadShortToYouTube } from './scheduler.ts';
+import { cleanupUploadedMediaFiles, computeNextPublishSlots, uploadShortToYouTube } from './scheduler.ts';
 import { renderShortVideoMp4 } from './videoRenderer.ts';
 
 export interface CustomConceptInput {
@@ -106,16 +109,50 @@ export function startBatchGenerationPipeline(req: BatchGenerateRequest): Pipelin
   // Execute asynchronously so HTTP response returns immediately while UI polls live progress
   (async () => {
     const batchAccepted: Array<{ quote: string; topic: string; title: string }> = [];
-    const styles = req.visualStyles.length > 0 ? req.visualStyles : ['Dark Cinematic Motivation'];
-    const cats = req.categories.length > 0 ? req.categories : ['Timeless Wisdom'];
+    const styles =
+      req.visualStyles.length > 0
+        ? req.visualStyles
+        : settings.selectedVisualStyles?.length
+        ? settings.selectedVisualStyles
+        : VISUAL_STYLES;
+    const cats =
+      req.categories.length > 0
+        ? req.categories
+        : settings.selectedCategories?.length
+        ? settings.selectedCategories
+        : CONTENT_CATEGORIES;
     const tracks = getAllMusicTracks();
 
+    let catCursor = Math.max(0, Number(settings.categoryRotationIndex) || 0);
+    let styleCursor = Math.max(0, Number(settings.styleRotationIndex) || 0);
+
     try {
+      // Sync existing quote history from Google Sheets BEFORE generating so no past quote ever repeats
+      if (req.youtubeAccessToken) {
+        const pulled = await pullUsedContentFromGoogleSheets(req.youtubeAccessToken);
+        if (pulled.importedCount > 0) {
+          appendLog(
+            job,
+            2,
+            `Loaded ${pulled.importedCount} past quote(s) from Google Sheets into Non-Repetition Engine.`,
+            'info'
+          );
+        }
+      }
+
       for (let i = 0; i < qty; i++) {
         const customItem = customList ? customList[i] : null;
         const videoId = `vid_${Date.now()}_${crypto.randomUUID().slice(0, 6)}`;
-        const category = customItem?.category || cats[i % cats.length];
-        const visualStyle = customItem?.visualStyle || styles[i % styles.length];
+        const category = customItem?.category || cats[catCursor % cats.length];
+        const visualStyle = customItem?.visualStyle || styles[styleCursor % styles.length];
+        if (!customItem) {
+          catCursor = (catCursor + 1) % cats.length;
+          styleCursor = (styleCursor + 1) % styles.length;
+          saveSettings({
+            categoryRotationIndex: catCursor,
+            styleRotationIndex: styleCursor,
+          });
+        }
         const now = new Date().toISOString();
 
         const placeholder: VideoRecord = {
@@ -176,6 +213,22 @@ export function startBatchGenerationPipeline(req: BatchGenerateRequest): Pipelin
                     },
                   ];
 
+            const curatedCheck = checkNonRepetition(
+              {
+                quote: customItem.quote,
+                topic: customItem.topic || category,
+                title: customItem.title || `${category} Reflection`,
+              },
+              batchAccepted,
+              settings.jaccardThreshold,
+              settings.trigramThreshold
+            );
+            if (curatedCheck.isDuplicate) {
+              throw new Error(
+                `Skipped duplicate quote already in Excel/Sheet history (${curatedCheck.reason}).`
+              );
+            }
+
             acceptedConcept = {
               topic: customItem.topic || category,
               title: customItem.title || `${category} Reflection`,
@@ -188,13 +241,13 @@ export function startBatchGenerationPipeline(req: BatchGenerateRequest): Pipelin
             };
             appendLog(job, 3, `[${i + 1}/${qty}] Curated Wisdom Vault script ready.`, 'success');
           } else {
-            // Stages 1, 2, 3 + Non-Repetition Engine (up to 4 retries)
-            appendLog(job, 1, `[${i + 1}/${qty}] Generating topic & concept (${category} / ${visualStyle})...`, 'info');
+            // Stages 1, 2, 3 + Non-Repetition Engine (up to 8 retries against SQLite + Excel/Sheets)
+            appendLog(job, 1, `[${i + 1}/${qty}] Cycling selection: "${category}" · "${visualStyle}"...`, 'info');
             const avoidQuotes = getAllUsedContent().map((u) => u.quote);
 
             let retryHint: string | undefined;
 
-            for (let attempt = 1; attempt <= 5; attempt++) {
+            for (let attempt = 1; attempt <= 8; attempt++) {
               const concept = await generateShortConcept({
                 engine: req.engine,
                 category,
@@ -207,7 +260,7 @@ export function startBatchGenerationPipeline(req: BatchGenerateRequest): Pipelin
               });
 
               job.activeProvider = concept.engineUsed;
-              appendLog(job, 2, `[${i + 1}/${qty}] Checking non-repetition (attempt ${attempt}/5)...`, 'info');
+              appendLog(job, 2, `[${i + 1}/${qty}] Checking SQLite/Excel history (attempt ${attempt}/8)...`, 'info');
 
               const dupCheck = checkNonRepetition(
                 { quote: concept.quote, topic: concept.topic, title: concept.title },
@@ -230,14 +283,14 @@ export function startBatchGenerationPipeline(req: BatchGenerateRequest): Pipelin
               appendLog(
                 job,
                 2,
-                `[${i + 1}/${qty}] Rejected candidate (${dupCheck.reason}). Retrying...`,
+                `[${i + 1}/${qty}] Duplicate detected in Excel/Sheet history (${dupCheck.reason}). Generating a fresh quote...`,
                 'warn'
               );
-              retryHint = `Previous attempt was too similar to "${dupCheck.matchedAgainst}". Pick a completely fresh angle, metaphor, and vocabulary.`;
+              retryHint = `Previous attempt "${concept.quote}" matched existing quote "${dupCheck.matchedAgainst}". Invent a 100% new metaphor, subject, and wording.`;
             }
 
             if (!acceptedConcept) {
-              throw new Error('Non-Repetition Engine exhausted 5 attempts without finding a unique quote.');
+              throw new Error('Non-Repetition Engine exhausted 8 attempts without finding a unique quote; skipped posting.');
             }
           }
 
@@ -360,11 +413,13 @@ export function startBatchGenerationPipeline(req: BatchGenerateRequest): Pipelin
                 updatedVideo.youtubeVideoId = yt.youtubeVideoId;
                 updatedVideo.scheduledAt = slot.isoUtc;
                 updatedVideo.status = 'scheduled';
+                const cleanedVideo = cleanupUploadedMediaFiles(updatedVideo);
+                Object.assign(updatedVideo, cleanedVideo);
                 upsertVideo(updatedVideo);
                 appendLog(
                   job,
                   12,
-                  `[${i + 1}/${qty}] Scheduled on YouTube (${yt.youtubeVideoId}) for ${slot.localDisplay}.`,
+                  `[${i + 1}/${qty}] Scheduled on YouTube (${yt.youtubeVideoId}) for ${slot.localDisplay} and deleted local MP4 to save storage.`,
                   'success'
                 );
               } catch (ytErr: any) {

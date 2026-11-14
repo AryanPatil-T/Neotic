@@ -162,7 +162,17 @@ export function checkNonRepetition(
   };
 }
 
-export function recordUsedContent(videoId: string, item: { quote: string; topic: string; title: string }) {
+export function recordUsedContent(
+  videoId: string,
+  item: { quote: string; topic: string; title: string }
+): boolean {
+  const norm = normalizeText(item.quote);
+  if (!norm) return false;
+  const existing = db
+    .prepare(`SELECT id FROM used_content WHERE normalized_quote = ? LIMIT 1`)
+    .get(norm);
+  if (existing) return false;
+
   db.prepare(`
     INSERT INTO used_content (id, video_id, quote, topic, title, normalized_quote, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -172,7 +182,8 @@ export function recordUsedContent(videoId: string, item: { quote: string; topic:
     item.quote,
     item.topic,
     item.title,
-    normalizeText(item.quote),
+    norm,
     new Date().toISOString()
   );
+  return true;
 }

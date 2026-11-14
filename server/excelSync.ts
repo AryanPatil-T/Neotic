@@ -207,7 +207,82 @@ export function importStudioWorkbookBuffer(buf: Buffer): ExcelImportSummary {
     }
   }
 
+  const usedSheet = wb.Sheets['USED CONTENT'];
+  if (usedSheet) {
+    const usedRows = XLSX.utils.sheet_to_json<Record<string, any>>(usedSheet);
+    for (const r of usedRows) {
+      const quote = String(r.Quote || '').trim();
+      if (!quote) continue;
+      const inserted = recordUsedContent(String(r.VideoID || r.ID || 'excel_import'), {
+        quote,
+        topic: String(r.Topic || 'Imported'),
+        title: String(r.Title || 'Imported Quote'),
+      });
+      if (inserted) summary.importedUsedContent++;
+    }
+  }
+
   return summary;
+}
+
+export async function pullUsedContentFromGoogleSheets(accessToken: string): Promise<{
+  importedCount: number;
+  spreadsheetId: string;
+}> {
+  const settings = getSettings();
+  const spreadsheetId = settings.connectedSpreadsheetId
+    ? extractSpreadsheetId(settings.connectedSpreadsheetId)
+    : '';
+  if (!spreadsheetId || !accessToken) {
+    return { importedCount: 0, spreadsheetId: '' };
+  }
+
+  let importedCount = 0;
+  try {
+    const ranges = [
+      encodeURIComponent("'USED CONTENT'!A2:F"),
+      encodeURIComponent("'VIDEO DATABASE'!A2:L"),
+    ];
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?ranges=${ranges.join(
+      '&ranges='
+    )}`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      return { importedCount: 0, spreadsheetId };
+    }
+    const data = (await res.json()) as any;
+    const valueRanges = Array.isArray(data?.valueRanges) ? data.valueRanges : [];
+
+    // Range 0: USED CONTENT -> [ID, Video ID, Quote, Topic, Title, Created At]
+    const usedRows: any[][] = valueRanges[0]?.values || [];
+    for (const row of usedRows) {
+      const videoId = String(row?.[1] || row?.[0] || 'sheet_archive').trim();
+      const quote = String(row?.[2] || '').trim();
+      const topic = String(row?.[3] || 'Archived').trim();
+      const title = String(row?.[4] || 'Archived Short').trim();
+      if (quote && recordUsedContent(videoId, { quote, topic, title })) {
+        importedCount++;
+      }
+    }
+
+    // Range 1: VIDEO DATABASE -> [ID, Title, Topic, Quote, ...]
+    const videoRows: any[][] = valueRanges[1]?.values || [];
+    for (const row of videoRows) {
+      const videoId = String(row?.[0] || 'sheet_archive').trim();
+      const title = String(row?.[1] || 'Archived Short').trim();
+      const topic = String(row?.[2] || 'Archived').trim();
+      const quote = String(row?.[3] || '').trim();
+      if (quote && recordUsedContent(videoId, { quote, topic, title })) {
+        importedCount++;
+      }
+    }
+  } catch {
+    // non-fatal sheet read error
+  }
+
+  return { importedCount, spreadsheetId };
 }
 
 export function extractSpreadsheetId(input: string): string {
@@ -267,6 +342,9 @@ export async function syncToGoogleSheets(accessToken: string): Promise<{
           const txt = await addRes.text().catch(() => addRes.statusText);
           throw new Error(`Failed to add missing Google Sheet tabs (${addRes.status}): ${txt}`);
         }
+      } else {
+        // Merge existing Sheet quote history into local SQLite before writing back
+        await pullUsedContentFromGoogleSheets(accessToken);
       }
     }
   }

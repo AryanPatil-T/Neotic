@@ -198,6 +198,10 @@ export interface StudioSettings {
   connectedSpreadsheetId: string;
   connectedSpreadsheetUrl: string;
   youtubeChannel: YouTubeChannelInfo | null;
+  selectedCategories: string[];
+  selectedVisualStyles: string[];
+  categoryRotationIndex: number;
+  styleRotationIndex: number;
   scheduleConfig: ScheduleConfig;
   dailyAutomation: DailyAutomationConfig;
   logoConfig: LogoConfig;

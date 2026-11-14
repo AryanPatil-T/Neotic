@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { ScheduleConfig, VideoRecord } from '../src/shared/types.ts';
-import { VIDEOS_DIR, getAllVideos, getSettings, upsertVideo } from './db.ts';
+import { IMAGES_DIR, VIDEOS_DIR, getAllVideos, getSettings, upsertVideo } from './db.ts';
 import { syncToGoogleSheets } from './excelSync.ts';
 
 const JS_DAY_TO_CODE = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
@@ -279,6 +279,59 @@ export async function uploadShortToYouTube(params: {
   return { youtubeVideoId: uploaded.id };
 }
 
+/**
+ * Deletes the local MP4 (and per-video fetched stock image) once YouTube confirms upload.
+ * Keeps lightweight metadata + YouTube ID + thumbnail in SQLite/Google Sheets so
+ * the Non-Repetition Engine still remembers every published Short with near-zero disk usage.
+ */
+export function cleanupUploadedMediaFiles(video: VideoRecord): VideoRecord {
+  const candidates = new Set<string>();
+  if (video.mp4Url) {
+    candidates.add(path.join(VIDEOS_DIR, path.basename(video.mp4Url.split('?')[0])));
+  }
+  candidates.add(path.join(VIDEOS_DIR, `${video.id}.mp4`));
+
+  for (const filePath of candidates) {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch {
+      // non-fatal cleanup error
+    }
+  }
+
+  // Delete per-video generated/fetched images in IMAGES_DIR (never shared samples or user uploads)
+  const imgUrls = [
+    video.backgroundImageUrl,
+    ...(video.scenes || []).map((s) => s.imageUrl),
+  ].filter(Boolean);
+
+  for (const url of imgUrls) {
+    const clean = url.split('?')[0];
+    if (clean.startsWith('/media/images/')) {
+      const imgPath = path.join(IMAGES_DIR, path.basename(clean));
+      try {
+        if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+      } catch {
+        // non-fatal cleanup error
+      }
+    }
+  }
+
+  const fallbackThumb = video.thumbnailUrl || '/media/samples/dark_lone_wolf_1794548198442.jpg';
+  return {
+    ...video,
+    mp4Url: '',
+    fileSizeBytes: 0,
+    backgroundImageUrl: video.backgroundImageUrl.startsWith('/media/images/')
+      ? fallbackThumb
+      : video.backgroundImageUrl,
+    scenes: (video.scenes || []).map((s) => ({
+      ...s,
+      imageUrl: s.imageUrl.startsWith('/media/images/') ? fallbackThumb : s.imageUrl,
+    })),
+  };
+}
+
 export async function syncPendingScheduledVideos(accessToken: string): Promise<{
   uploadedCount: number;
   skippedCount: number;
@@ -321,7 +374,8 @@ export async function syncPendingScheduledVideos(accessToken: string): Promise<{
       v.status = 'scheduled';
       v.errorMessage = null;
       v.updatedAt = new Date().toISOString();
-      upsertVideo(v);
+      const cleaned = cleanupUploadedMediaFiles(v);
+      upsertVideo(cleaned);
       uploadedCount++;
     } catch (err: any) {
       const msg = err?.message || String(err);

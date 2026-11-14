@@ -180,21 +180,21 @@ export const Layout: React.FC<LayoutProps> = ({
       </div>
 
       {/* Mobile Bottom Navigation Bar */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 h-14 bg-[#12131A]/95 backdrop-blur border-t border-[#27293A] flex items-center justify-around px-1 z-40">
-        {NAV_ITEMS.slice(0, 6).map((item) => {
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 h-14 bg-[#12131A]/95 backdrop-blur border-t border-[#27293A] flex items-center justify-around overflow-x-auto px-1 z-40">
+        {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = activeRoute === item.id;
           return (
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
-              className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 rounded-md min-w-[44px] ${
+              className={`flex flex-col items-center justify-center gap-0.5 px-1.5 py-1 rounded-md min-w-[42px] shrink-0 ${
                 active ? 'text-[#8B5CF6]' : 'text-[#8E92A8]'
               }`}
             >
               <Icon className="w-4 h-4" />
               <span className="text-[10px] leading-tight whitespace-nowrap">
-                {item.label.split(' ')[0]}
+                {item.id === 'database' ? 'Sheets' : item.label.split(' ')[0]}
               </span>
             </button>
           );

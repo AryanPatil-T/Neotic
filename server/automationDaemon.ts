@@ -129,14 +129,23 @@ export function triggerDailyAutomationRun(
     },
   });
 
+  const allStyles =
+    settings.selectedVisualStyles && settings.selectedVisualStyles.length > 0
+      ? settings.selectedVisualStyles
+      : VISUAL_STYLES;
+  const allCategories =
+    settings.selectedCategories && settings.selectedCategories.length > 0
+      ? settings.selectedCategories
+      : CONTENT_CATEGORIES;
+
   const job = startBatchGenerationPipeline({
     quantity: qty,
     productionMode: settings.defaultProductionMode,
     imageSource: settings.defaultImageSource,
     engine: settings.activeEngine,
     quoteTone: settings.defaultQuoteTone,
-    visualStyles: VISUAL_STYLES.slice(0, 8),
-    categories: CONTENT_CATEGORIES.slice(0, 8),
+    visualStyles: allStyles,
+    categories: allCategories,
     bwMonochrome: settings.bwMonochrome,
     autoUploadSchedule: true,
     youtubeAccessToken: cfg.autoUploadToYouTube ? accessToken : undefined,

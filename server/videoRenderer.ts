@@ -308,9 +308,9 @@ function getZoompanExpr(
   motion: CameraMotion,
   frames: number,
   width: number,
-  height: number
+  height: number,
+  fps = 30
 ): string {
-  const fps = 30;
   switch (motion) {
     case 'slow_zoom_out':
       return `zoompan=z='max(1.0,1.16-0.16*on/${frames})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${width}x${height}:fps=${fps}`;
@@ -428,12 +428,15 @@ async function performRender(video: VideoRecord): Promise<{
           .toFile(outThumbPath);
       }
 
-      const frames = Math.max(30, Math.round(perSceneSec * 30));
-      const zp = getZoompanExpr(sc.motion || 'slow_zoom_in', frames, width, height);
+      const isLowResource = process.env.LOW_MEMORY === 'true' || process.env.RENDER === 'true';
+      const fps = isLowResource ? 24 : 30;
+      const frames = Math.max(24, Math.round(perSceneSec * fps));
+      const zp = getZoompanExpr(sc.motion || 'slow_zoom_in', frames, width, height, fps);
       const segOut = path.join(tmpDir, `seg_${i}.mp4`);
 
-      const lowMemThreads =
-        process.env.LOW_MEMORY === 'true' || process.env.RENDER === 'true' ? ['-threads', '2'] : [];
+      const lowMemThreads = isLowResource ? ['-threads', '2'] : [];
+      const x264Preset = isLowResource ? 'ultrafast' : 'veryfast';
+      const x264Crf = isLowResource ? '24' : '22';
 
       await runFfmpeg([
         '-y',
@@ -452,9 +455,9 @@ async function performRender(video: VideoRecord): Promise<{
         '-c:v',
         'libx264',
         '-preset',
-        'veryfast',
+        x264Preset,
         '-crf',
-        '22',
+        x264Crf,
         '-pix_fmt',
         'yuv420p',
         ...lowMemThreads,

@@ -106,7 +106,7 @@ function buildPrompt(params: {
   avoidQuotes: string[];
   retryHint?: string;
 }): string {
-  const avoidList = params.avoidQuotes.slice(0, 18).map((q) => `- "${q}"`).join('\n');
+  const avoidList = params.avoidQuotes.slice(0, 45).map((q) => `- "${q}"`).join('\n');
   const sceneCount = params.productionMode === 'multi_scene' ? 4 : 1;
   const useSecularWisdom =
     params.quoteTone === 'secular_wisdom' ||

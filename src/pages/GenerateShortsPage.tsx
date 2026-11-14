@@ -66,16 +66,12 @@ export const GenerateShortsPage: React.FC<GenerateShortsPageProps> = ({
   const [bwMonochrome, setBwMonochrome] = useState(settings.bwMonochrome);
   const [autoUploadSchedule, setAutoUploadSchedule] = useState(settings.autoUploadSchedule);
 
-  const [selectedStyles, setSelectedStyles] = useState<string[]>([
-    'Dark Cinematic Motivation',
-    'Lone Wolf',
-    'Mountain Solitude',
-  ]);
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([
-    'Timeless Wisdom',
-    'Epic Strategy',
-    'Life Lessons',
-  ]);
+  const [selectedStyles, setSelectedStyles] = useState<string[]>(
+    settings.selectedVisualStyles?.length ? settings.selectedVisualStyles : VISUAL_STYLES
+  );
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    settings.selectedCategories?.length ? settings.selectedCategories : CONTENT_CATEGORIES
+  );
 
   const [traditionFilter, setTraditionFilter] = useState<'All' | WisdomTradition>('All');
   const [selectedQuoteIds, setSelectedQuoteIds] = useState<string[]>([]);
@@ -94,6 +90,16 @@ export const GenerateShortsPage: React.FC<GenerateShortsPageProps> = ({
   useEffect(() => {
     api.getAssets('photo').then((res) => setUploadedPhotos(res.assets)).catch(() => {});
   }, []);
+
+  const updateStyles = (next: string[]) => {
+    setSelectedStyles(next);
+    api.updateSettings({ selectedVisualStyles: next }).catch(() => {});
+  };
+
+  const updateCategories = (next: string[]) => {
+    setSelectedCategories(next);
+    api.updateSettings({ selectedCategories: next }).catch(() => {});
+  };
 
   const toggleItem = (list: string[], item: string, setter: (v: string[]) => void) => {
     if (list.includes(item)) {
@@ -459,11 +465,22 @@ export const GenerateShortsPage: React.FC<GenerateShortsPageProps> = ({
         <div className="lg:col-span-5 space-y-6">
           {/* 5. 11 Dark Cinematic Visual Styles */}
           <div className="rounded-xl bg-[#12131A] border border-[#27293A] p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white">5. Visual Styles (11)</h2>
-              <span className="text-xs text-[#8E92A8] font-mono-tabular">
-                {selectedStyles.length} selected
-              </span>
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-white">5. Visual Styles ({VISUAL_STYLES.length})</h2>
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs text-[#8E92A8] font-mono-tabular">
+                  {selectedStyles.length} selected
+                </span>
+                {selectedStyles.length < VISUAL_STYLES.length && (
+                  <button
+                    type="button"
+                    onClick={() => updateStyles([...VISUAL_STYLES])}
+                    className="text-[11px] text-[#8B5CF6] hover:text-white font-medium"
+                  >
+                    Select All
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {VISUAL_STYLES.map((style) => {
@@ -471,7 +488,7 @@ export const GenerateShortsPage: React.FC<GenerateShortsPageProps> = ({
                 return (
                   <button
                     key={style}
-                    onClick={() => toggleItem(selectedStyles, style, setSelectedStyles)}
+                    onClick={() => toggleItem(selectedStyles, style, updateStyles)}
                     className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1.5 ${
                       active
                         ? 'bg-[#8B5CF6]/20 border-[#8B5CF6] text-white'
@@ -488,13 +505,24 @@ export const GenerateShortsPage: React.FC<GenerateShortsPageProps> = ({
 
           {/* 6. Content Categories */}
           <div className="rounded-xl bg-[#12131A] border border-[#27293A] p-5 space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-white">
                 6. Content Categories ({CONTENT_CATEGORIES.length})
               </h2>
-              <span className="text-xs text-[#8E92A8] font-mono-tabular">
-                {selectedCategories.length} selected
-              </span>
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs text-[#8E92A8] font-mono-tabular">
+                  {selectedCategories.length} selected
+                </span>
+                {selectedCategories.length < CONTENT_CATEGORIES.length && (
+                  <button
+                    type="button"
+                    onClick={() => updateCategories([...CONTENT_CATEGORIES])}
+                    className="text-[11px] text-[#3B82F6] hover:text-white font-medium"
+                  >
+                    Select All
+                  </button>
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {CONTENT_CATEGORIES.map((cat) => {
@@ -502,7 +530,7 @@ export const GenerateShortsPage: React.FC<GenerateShortsPageProps> = ({
                 return (
                   <button
                     key={cat}
-                    onClick={() => toggleItem(selectedCategories, cat, setSelectedCategories)}
+                    onClick={() => toggleItem(selectedCategories, cat, updateCategories)}
                     className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1.5 ${
                       active
                         ? 'bg-[#3B82F6]/20 border-[#3B82F6] text-white'
@@ -522,12 +550,11 @@ export const GenerateShortsPage: React.FC<GenerateShortsPageProps> = ({
             <div className="flex items-start gap-3">
               <ShieldCheck className="w-5 h-5 text-[#10B981] shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <h2 className="text-sm font-semibold text-white">Non-Repetition Engine Active</h2>
+                <h2 className="text-sm font-semibold text-white">Non-Repetition &amp; Selection Rotation Active</h2>
                 <p className="text-xs text-[#9B9FB5] leading-relaxed">
-                  Every generated quote, topic, and title is verified against the permanent SQLite{' '}
-                  <span className="font-mono-tabular text-[#D4D6E2]">used_content</span> archive using exact match,
-                  normalized Jaccard token similarity (&ge; {Math.round(settings.jaccardThreshold * 100)}%),
-                  and character trigram cosine (&ge; {Math.round(settings.trigramThreshold * 100)}%). Auto-retries up to 4 times.
+                  Cycles persistently through every selected category &amp; visual style across batches and daily runs. Each quote is verified against SQLite + connected Google Sheets{' '}
+                  <span className="font-mono-tabular text-[#D4D6E2]">USED CONTENT</span> (exact match,
+                  Jaccard &ge; {Math.round(settings.jaccardThreshold * 100)}%, Trigram &ge; {Math.round(settings.trigramThreshold * 100)}%) with up to 8 auto-retries—duplicates are never posted.
                 </p>
               </div>
             </div>

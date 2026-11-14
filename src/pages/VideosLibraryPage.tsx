@@ -3,6 +3,7 @@ import {
   CalendarClock,
   Download,
   Edit3,
+  ExternalLink,
   Film,
   ImagePlus,
   Layers,
@@ -299,7 +300,7 @@ export const VideosLibraryPage: React.FC<VideosLibraryPageProps> = ({
                     disabled={isBusy}
                     onClick={() => handleReRender(v)}
                   />
-                  {v.mp4Url && (
+                  {v.mp4Url ? (
                     <a
                       href={`/api/videos/${v.id}/download`}
                       className="px-2.5 py-1.5 rounded-md bg-[#12131A] hover:bg-[#222434] border border-[#27293A] text-[11px] text-[#10B981] font-medium inline-flex items-center gap-1"
@@ -307,7 +308,18 @@ export const VideosLibraryPage: React.FC<VideosLibraryPageProps> = ({
                       <Download className="w-3 h-3" />
                       <span>MP4</span>
                     </a>
-                  )}
+                  ) : v.youtubeVideoId ? (
+                    <a
+                      href={`https://studio.youtube.com/video/${v.youtubeVideoId}/edit`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2.5 py-1.5 rounded-md bg-[#12131A] hover:bg-[#222434] border border-[#27293A] text-[11px] text-[#3B82F6] font-medium inline-flex items-center gap-1"
+                      title="Local MP4 deleted after upload; video is stored on YouTube"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      <span>On YouTube</span>
+                    </a>
+                  ) : null}
                   <ActionBtn icon={CalendarClock} label="Schedule" onClick={onNavigateScheduler} />
                   <button
                     disabled={isBusy}

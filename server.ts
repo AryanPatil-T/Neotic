@@ -46,6 +46,7 @@ import {
   startBatchGenerationPipeline,
 } from './server/pipeline.ts';
 import {
+  cleanupUploadedMediaFiles,
   computeNextPublishSlots,
   syncPendingScheduledVideos,
   uploadShortToYouTube,
@@ -446,24 +447,26 @@ app.post('/api/schedule/assign', async (req, res) => {
     if (!slot) continue;
 
     try {
+      let targetVideo = v;
       if (uploadToYouTube && accessToken) {
         const yt = await uploadShortToYouTube({
           video: v,
           accessToken,
           publishAtIso: slot.isoUtc,
         });
-        v.youtubeVideoId = yt.youtubeVideoId;
+        targetVideo.youtubeVideoId = yt.youtubeVideoId;
+        targetVideo = cleanupUploadedMediaFiles(targetVideo);
       }
-      v.scheduledAt = slot.isoUtc;
-      v.status = 'scheduled';
-      v.errorMessage = null;
-      v.updatedAt = new Date().toISOString();
-      upsertVideo(v);
+      targetVideo.scheduledAt = slot.isoUtc;
+      targetVideo.status = 'scheduled';
+      targetVideo.errorMessage = null;
+      targetVideo.updatedAt = new Date().toISOString();
+      upsertVideo(targetVideo);
       results.push({
-        id: v.id,
-        status: v.status,
+        id: targetVideo.id,
+        status: targetVideo.status,
         scheduledAt: slot.isoUtc,
-        youtubeVideoId: v.youtubeVideoId ?? undefined,
+        youtubeVideoId: targetVideo.youtubeVideoId ?? undefined,
       });
     } catch (err: any) {
       results.push({ id: v.id, status: 'failed', error: err?.message || 'Upload failed' });

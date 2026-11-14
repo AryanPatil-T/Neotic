@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import {
+  CONTENT_CATEGORIES,
   DEFAULT_GRADIENTS_CONFIG,
   DEFAULT_LOGO_CONFIG,
   DEFAULT_QUOTE_STYLE,
@@ -12,6 +13,7 @@ import {
   type UploadedAsset,
   type UsedContentRecord,
   type VideoRecord,
+  VISUAL_STYLES,
 } from '../src/shared/types.ts';
 
 export const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -223,12 +225,14 @@ export function getDefaultSettings(): StudioSettings {
   const mm = String(now.getMonth() + 1).padStart(2, '0');
   const dd = String(now.getDate()).padStart(2, '0');
 
+  const isLowResource = process.env.LOW_MEMORY === 'true' || process.env.RENDER === 'true';
+
   return {
     defaultProductionMode: 'single_image',
     defaultImageSource: 'stock_web',
-    resolution: '1080x1920',
+    resolution: isLowResource ? '720x1280' : '1080x1920',
     defaultPrivacy: 'private',
-    durationSec: 30,
+    durationSec: isLowResource ? 15 : 30,
     dailyLimit: 8,
     activeEngine: 'auto',
     defaultQuoteTone: 'secular_wisdom',
@@ -243,6 +247,10 @@ export function getDefaultSettings(): StudioSettings {
     connectedSpreadsheetId: '',
     connectedSpreadsheetUrl: '',
     youtubeChannel: null,
+    selectedCategories: [...CONTENT_CATEGORIES],
+    selectedVisualStyles: [...VISUAL_STYLES],
+    categoryRotationIndex: 0,
+    styleRotationIndex: 0,
     scheduleConfig: {
       intervalHours: 2,
       startDate: `${yyyy}-${mm}-${dd}`,
