@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-obsidian: #09090E;
+    --bg-charcoal: #12131A;
+    --bg-elevated: #181924;
+    --border-subtle: #27293A;
+    --accent-violet: #8B5CF6;
+    --accent-emerald: #10B981;
+    --accent-blue: #3B82F6;
+    --accent-amber: #F59E0B;
+    --accent-crimson: #EF4444;
+  }
+
+  html,
+  body {
+    background-color: #09090E;
+    color: #F4F4F6;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    letter-spacing: 0.005em;
+  }
+}
+
+.font-playfair {
+  font-family: "Playfair Display", Georgia, serif;
+}
+
+.font-cinzel {
+  font-family: "Cinzel", Georgia, serif;
+}
+
+.font-cormorant {
+  font-family: "Cormorant Garamond", Georgia, serif;
+}
+
+.font-inter {
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.font-mono-tabular {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom sleek dark studio scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #09090E;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27293A;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3B3E54;
+}

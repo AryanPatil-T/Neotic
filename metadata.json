@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix AI Shorts Studio",
+  "description": "Dark-cinematic YouTube Shorts automation studio with local SQLite persistence, real-time 9:16 visual editors, Web Audio synthesis, FFmpeg MP4 rendering, and scheduling.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
