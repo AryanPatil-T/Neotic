@@ -153,18 +153,24 @@ async function generateWithGeminiImage(prompt: string): Promise<Buffer | null> {
 
 export function resolveLocalMediaPath(mediaUrl: string): string | null {
   if (!mediaUrl) return null;
-  const cleanUrl = mediaUrl.split('?')[0];
+  const cleanUrl = mediaUrl.split('?')[0].trim();
+  if (!cleanUrl) return null;
   if (cleanUrl.startsWith('/media/images/')) {
-    return path.join(IMAGES_DIR, path.basename(cleanUrl));
+    const base = path.basename(cleanUrl);
+    return base && base !== 'images' ? path.join(IMAGES_DIR, base) : null;
   }
   if (cleanUrl.startsWith('/media/uploads/')) {
-    return path.join(UPLOADS_DIR, path.basename(cleanUrl));
+    const base = path.basename(cleanUrl);
+    return base && base !== 'uploads' ? path.join(UPLOADS_DIR, base) : null;
   }
   if (cleanUrl.startsWith('/media/samples/')) {
-    return path.join(SAMPLES_DIR, path.basename(cleanUrl));
+    const base = path.basename(cleanUrl);
+    return base && base !== 'samples' ? path.join(SAMPLES_DIR, base) : null;
   }
   if (cleanUrl.startsWith('/assets/')) {
-    return path.resolve(process.cwd(), 'public', cleanUrl.replace(/^\/+/, ''));
+    const rel = cleanUrl.replace(/^\/+/, '');
+    const full = path.resolve(process.cwd(), 'public', rel);
+    return fs.existsSync(full) && fs.statSync(full).isFile() ? full : null;
   }
   return null;
 }
@@ -186,7 +192,7 @@ export async function acquireVerticalImage(params: {
     if (uploaded.length > 0) {
       const picked = uploaded[(params.indexSeed ?? 0) % uploaded.length];
       const diskPath = resolveLocalMediaPath(picked.fileUrl);
-      if (diskPath && fs.existsSync(diskPath)) {
+      if (diskPath && fs.existsSync(diskPath) && fs.statSync(diskPath).isFile()) {
         const buf = fs.readFileSync(diskPath);
         return processBufferTo916(buf, outFileName, params.resolution, params.bwMonochrome);
       }
@@ -252,7 +258,7 @@ export async function acquireVerticalImage(params: {
     ) ?? STUDIO_SAMPLE_IMAGES[(params.indexSeed ?? 0) % STUDIO_SAMPLE_IMAGES.length];
 
   const samplePath = resolveLocalMediaPath(matchingSample.fileUrl);
-  if (samplePath && fs.existsSync(samplePath)) {
+  if (samplePath && fs.existsSync(samplePath) && fs.statSync(samplePath).isFile()) {
     const buf = fs.readFileSync(samplePath);
     params.onLog?.(`Using local studio 9:16 artwork: ${matchingSample.name}`, 'info');
     return processBufferTo916(buf, outFileName, params.resolution, params.bwMonochrome);

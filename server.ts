@@ -54,6 +54,7 @@ import {
 import {
   getAutomationStatus,
   getSessionGoogleToken,
+  resolveHeadlessGoogleAccessToken,
   setSessionGoogleToken,
   startAutomationDaemon,
   triggerDailyAutomationRun,
@@ -381,17 +382,17 @@ app.post('/api/automation/session-token', (req, res) => {
   res.json({ active: true });
 });
 
-app.post('/api/automation/run-now', (req, res) => {
+app.post('/api/automation/run-now', async (req, res) => {
   const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '');
   if (bearer) setSessionGoogleToken(bearer);
-  const result = triggerDailyAutomationRun('manual', bearer);
+  const result = await triggerDailyAutomationRun('manual', bearer);
   if (!result.started) {
     return res.status(409).json({ error: result.reason, job: result.job });
   }
   res.json({ job: result.job, automation: getAutomationStatus() });
 });
 
-app.post('/api/automation/cron-trigger', (req, res) => {
+app.post('/api/automation/cron-trigger', async (req, res) => {
   const expectedSecret = process.env.AUTOMATION_WEBHOOK_SECRET;
   if (expectedSecret) {
     const provided = req.headers['x-cron-secret'] || req.query.secret;
@@ -399,7 +400,7 @@ app.post('/api/automation/cron-trigger', (req, res) => {
       return res.status(401).json({ error: 'Invalid cron secret' });
     }
   }
-  const result = triggerDailyAutomationRun('webhook');
+  const result = await triggerDailyAutomationRun('webhook');
   if (!result.started) {
     return res.status(409).json({ error: result.reason, job: result.job });
   }
@@ -407,12 +408,18 @@ app.post('/api/automation/cron-trigger', (req, res) => {
 });
 
 app.post('/api/automation/sync-pending', async (req, res) => {
-  const accessToken = req.headers.authorization?.replace(/^Bearer\s+/i, '') || getSessionGoogleToken();
+  const accessToken =
+    req.headers.authorization?.replace(/^Bearer\s+/i, '') ||
+    getSessionGoogleToken() ||
+    (await resolveHeadlessGoogleAccessToken());
   if (!accessToken) {
     return res.status(401).json({ error: 'Sign in with Google first to upload pending Shorts.' });
   }
   setSessionGoogleToken(accessToken);
   const result = await syncPendingScheduledVideos(accessToken);
+  if (result.errors.some((e) => /\(401\)|unauthorized|invalid_token/i.test(e))) {
+    setSessionGoogleToken(null);
+  }
   res.json(result);
 });
 
@@ -430,7 +437,10 @@ app.post('/api/schedule/assign', async (req, res) => {
   const settings = getSettings();
   const videoIds: string[] = Array.isArray(req.body?.videoIds) ? req.body.videoIds : [];
   const uploadToYouTube = Boolean(req.body?.uploadToYouTube);
-  const accessToken = req.headers.authorization?.replace(/^Bearer\s+/i, '') || getSessionGoogleToken();
+  const accessToken =
+    req.headers.authorization?.replace(/^Bearer\s+/i, '') ||
+    getSessionGoogleToken() ||
+    (uploadToYouTube ? await resolveHeadlessGoogleAccessToken() : null);
 
   const slots = computeNextPublishSlots(
     settings.scheduleConfig,
@@ -469,7 +479,11 @@ app.post('/api/schedule/assign', async (req, res) => {
         youtubeVideoId: targetVideo.youtubeVideoId ?? undefined,
       });
     } catch (err: any) {
-      results.push({ id: v.id, status: 'failed', error: err?.message || 'Upload failed' });
+      const msg = err?.message || 'Upload failed';
+      if (/\(401\)|unauthorized|invalid_token/i.test(msg)) {
+        setSessionGoogleToken(null);
+      }
+      results.push({ id: v.id, status: 'failed', error: msg });
     }
   }
 
@@ -521,7 +535,10 @@ app.post('/api/database/sheets-link', (req, res) => {
 });
 
 app.post('/api/database/sheets-sync', async (req, res) => {
-  const accessToken = req.headers.authorization?.replace(/^Bearer\s+/i, '') || getSessionGoogleToken();
+  const accessToken =
+    req.headers.authorization?.replace(/^Bearer\s+/i, '') ||
+    getSessionGoogleToken() ||
+    (await resolveHeadlessGoogleAccessToken());
   if (!accessToken) {
     return res.status(401).json({ error: 'Google sign-in required to sync Google Sheets.' });
   }
@@ -529,7 +546,12 @@ app.post('/api/database/sheets-sync', async (req, res) => {
     const result = await syncToGoogleSheets(accessToken);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err?.message || 'Google Sheets sync failed' });
+    const msg = err?.message || 'Google Sheets sync failed';
+    if (/\(401\)|unauthorized|invalid_token/i.test(msg)) {
+      setSessionGoogleToken(null);
+      return res.status(401).json({ error: 'Google session expired. Please Sign in with Google again.' });
+    }
+    res.status(500).json({ error: msg });
   }
 });
 

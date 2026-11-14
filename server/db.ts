@@ -219,6 +219,15 @@ function seedBuiltInMusicTracks() {
   }
 }
 
+function resolveEnvSpreadsheet(): { id: string; url: string } {
+  const raw = (process.env.GOOGLE_SHEET_URL || process.env.GOOGLE_SPREADSHEET_ID || '').trim();
+  if (!raw) return { id: '', url: '' };
+  const match = raw.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  const id = match ? match[1] : raw;
+  const url = raw.startsWith('http') ? raw : `https://docs.google.com/spreadsheets/d/${id}/edit`;
+  return { id, url };
+}
+
 export function getDefaultSettings(): StudioSettings {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -226,6 +235,7 @@ export function getDefaultSettings(): StudioSettings {
   const dd = String(now.getDate()).padStart(2, '0');
 
   const isLowResource = process.env.LOW_MEMORY === 'true' || process.env.RENDER === 'true';
+  const envSheet = resolveEnvSpreadsheet();
 
   return {
     defaultProductionMode: 'single_image',
@@ -244,8 +254,8 @@ export function getDefaultSettings(): StudioSettings {
     activeMusicTrackId: 'user-default-motivation-mp3',
     jaccardThreshold: 0.58,
     trigramThreshold: 0.72,
-    connectedSpreadsheetId: '',
-    connectedSpreadsheetUrl: '',
+    connectedSpreadsheetId: envSheet.id,
+    connectedSpreadsheetUrl: envSheet.url,
     youtubeChannel: null,
     selectedCategories: [...CONTENT_CATEGORIES],
     selectedVisualStyles: [...VISUAL_STYLES],
@@ -262,7 +272,11 @@ export function getDefaultSettings(): StudioSettings {
     dailyAutomation: {
       enabled: true,
       runTime: '08:00',
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      timezone:
+        process.env.AUTOMATION_TIMEZONE ||
+        process.env.TZ ||
+        Intl.DateTimeFormat().resolvedOptions().timeZone ||
+        'UTC',
       videosPerDay: 8,
       intervalHours: 2,
       firstPublishTime: '09:00',
@@ -352,9 +366,12 @@ export function getSettings(): StudioSettings {
   if (!row) return defaults;
   try {
     const parsed = JSON.parse(row.value_json) as Partial<StudioSettings>;
+    const envSheet = resolveEnvSpreadsheet();
     return {
       ...defaults,
       ...parsed,
+      connectedSpreadsheetId: parsed.connectedSpreadsheetId || envSheet.id || '',
+      connectedSpreadsheetUrl: parsed.connectedSpreadsheetUrl || envSheet.url || '',
       musicVolume: parsed.musicVolume && parsed.musicVolume <= 45 ? 75 : (parsed.musicVolume ?? defaults.musicVolume),
       scheduleConfig: { ...defaults.scheduleConfig, ...(parsed.scheduleConfig ?? {}) },
       dailyAutomation: { ...defaults.dailyAutomation, ...(parsed.dailyAutomation ?? {}) },

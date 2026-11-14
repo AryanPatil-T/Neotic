@@ -62,6 +62,15 @@ function mapFontFamily(fontFamily: QuoteStyleConfig['fontFamily']): string {
   }
 }
 
+function isExistingFile(p: string | null | undefined): p is string {
+  if (!p) return false;
+  try {
+    return fs.existsSync(p) && fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function buildLogoDataUri(logoConfig: LogoConfig): { dataUri: string; mime: string } | null {
   if (!logoConfig.imageUrl) return null;
   if (logoConfig.imageUrl.startsWith('data:image/')) {
@@ -69,7 +78,7 @@ function buildLogoDataUri(logoConfig: LogoConfig): { dataUri: string; mime: stri
     return { dataUri: logoConfig.imageUrl, mime: match?.[1] || 'image/png' };
   }
   const diskPath = resolveLocalMediaPath(logoConfig.imageUrl);
-  if (!diskPath || !fs.existsSync(diskPath)) return null;
+  if (!isExistingFile(diskPath)) return null;
   const ext = path.extname(diskPath).toLowerCase();
   const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
   const b64 = fs.readFileSync(diskPath).toString('base64');
@@ -386,7 +395,7 @@ async function performRender(video: VideoRecord): Promise<{
       } else {
         audioPath = resolveLocalMediaPath(track.fileUrl);
       }
-      if (audioPath && !fs.existsSync(audioPath)) audioPath = null;
+      if (!isExistingFile(audioPath)) audioPath = null;
     }
 
     const totalDuration = Math.max(5, Math.min(30, video.durationSec || 30));
@@ -399,7 +408,7 @@ async function performRender(video: VideoRecord): Promise<{
         resolveLocalMediaPath(sc.imageUrl || video.backgroundImageUrl) ??
         resolveLocalMediaPath(video.backgroundImageUrl);
 
-      if (!bgDisk || !fs.existsSync(bgDisk)) {
+      if (!isExistingFile(bgDisk)) {
         throw new Error(`Missing background image on disk for scene ${i + 1}`);
       }
 

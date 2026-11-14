@@ -32,6 +32,86 @@ export function getSessionGoogleToken(): string | null {
   return sessionGoogleToken.token;
 }
 
+export function hasHeadlessRefreshConfig(): boolean {
+  return Boolean(
+    process.env.YOUTUBE_CLIENT_ID?.trim() &&
+      process.env.YOUTUBE_CLIENT_SECRET?.trim() &&
+      process.env.YOUTUBE_REFRESH_TOKEN?.trim()
+  );
+}
+
+export async function resolveHeadlessGoogleAccessToken(): Promise<string | null> {
+  const active = getSessionGoogleToken();
+  if (active) return active;
+
+  const clientId = process.env.YOUTUBE_CLIENT_ID?.trim();
+  const clientSecret = process.env.YOUTUBE_CLIENT_SECRET?.trim();
+  const refreshToken = process.env.YOUTUBE_REFRESH_TOKEN?.trim();
+  if (!clientId || !clientSecret || !refreshToken) {
+    return null;
+  }
+
+  try {
+    const body = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    });
+
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.statusText);
+      console.error(`[DailyAutomation] OAuth refresh token exchange failed (${res.status}):`, errText);
+      return null;
+    }
+
+    const data = (await res.json()) as { access_token?: string; expires_in?: number };
+    if (!data?.access_token) return null;
+
+    const ttlSec = Math.max(300, Number(data.expires_in || 3600) - 120);
+    setSessionGoogleToken(data.access_token, ttlSec);
+
+    // Populate channel metadata automatically after fresh container startup
+    const settings = getSettings();
+    if (!settings.youtubeChannel) {
+      try {
+        const chRes = await fetch(
+          'https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true',
+          { headers: { Authorization: `Bearer ${data.access_token}` } }
+        );
+        if (chRes.ok) {
+          const chData = (await chRes.json()) as any;
+          const ch = chData?.items?.[0];
+          if (ch) {
+            saveSettings({
+              youtubeChannel: {
+                id: ch.id,
+                title: ch.snippet?.title || 'Connected Channel',
+                subscriberCount: ch.statistics?.subscriberCount || '0',
+                videoCount: ch.statistics?.videoCount || '0',
+                thumbnailUrl: ch.snippet?.thumbnails?.default?.url,
+              },
+            });
+          }
+        }
+      } catch {
+        // non-fatal channel metadata fetch
+      }
+    }
+
+    return data.access_token;
+  } catch (err) {
+    console.error('[DailyAutomation] Failed to refresh Google access token:', err);
+    return null;
+  }
+}
+
 function parseHHMM(hhmm: string): { hour: number; minute: number } {
   const [hStr, mStr] = (hhmm || '08:00').split(':');
   const hour = Math.max(0, Math.min(23, Number(hStr) || 8));
@@ -90,14 +170,15 @@ export function getAutomationStatus() {
     nextRunDisplay: next.nextRunDisplay,
     pendingYouTubeUploads,
     hasActiveSessionToken: Boolean(activeToken),
+    headlessAutoUploadConfigured: hasHeadlessRefreshConfig(),
     tokenExpiresAt: sessionGoogleToken ? new Date(sessionGoogleToken.expiresAt).toISOString() : null,
   };
 }
 
-export function triggerDailyAutomationRun(
+export async function triggerDailyAutomationRun(
   source: 'cron' | 'manual' | 'webhook',
   overrideToken?: string | null
-): { started: boolean; job?: PipelineJob; reason?: string } {
+): Promise<{ started: boolean; job?: PipelineJob; reason?: string }> {
   const active = getActiveOrLatestJob(null);
   if (active && active.status === 'running') {
     return { started: false, job: active, reason: 'A generation pipeline is already running.' };
@@ -107,7 +188,10 @@ export function triggerDailyAutomationRun(
   const cfg = settings.dailyAutomation;
   const tz = cfg.timezone || 'UTC';
   const nowParts = getZonedParts(new Date(), tz);
-  const accessToken = overrideToken || getSessionGoogleToken() || undefined;
+  let accessToken = overrideToken || getSessionGoogleToken() || undefined;
+  if (!accessToken && (cfg.autoUploadToYouTube || cfg.autoSyncToSheets)) {
+    accessToken = (await resolveHeadlessGoogleAccessToken()) || undefined;
+  }
 
   const qty = Math.max(1, Math.min(10, Number(cfg.videosPerDay) || 8));
   const intervalHours = Math.max(1, Math.min(12, Number(cfg.intervalHours) || 2));
@@ -191,7 +275,7 @@ export function triggerDailyAutomationRun(
   return { started: true, job };
 }
 
-function checkDailyTick() {
+async function checkDailyTick() {
   try {
     const settings = getSettings();
     const cfg = settings.dailyAutomation;
@@ -211,7 +295,7 @@ function checkDailyTick() {
       console.log(
         `[DailyAutomation] Triggering 08:00 batch (${cfg.videosPerDay} Shorts, ${cfg.intervalHours}h interval) for ${nowParts.ymd} (${tz})`
       );
-      triggerDailyAutomationRun('cron');
+      await triggerDailyAutomationRun('cron');
     }
   } catch (err) {
     console.error('[DailyAutomation] Tick error:', err);

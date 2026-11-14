@@ -13,13 +13,14 @@ import {
   UsedContentRecord,
   VideoRecord,
 } from '../shared/types';
-import { api } from '../lib/api';
+import { AutomationStatusResponse, api } from '../lib/api';
 import { googleSignIn } from '../lib/googleOAuth';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { ConfirmActionModal } from '../components/ConfirmActionModal';
 
 interface DatabasePageProps {
   settings: StudioSettings;
+  automation?: AutomationStatusResponse;
   accessToken: string | null;
   onTokenChange: (token: string | null) => void;
   onSettingsUpdated: (s: StudioSettings) => void;
@@ -30,11 +31,15 @@ type SheetTab = 'VIDEO DATABASE' | 'USED CONTENT' | 'MUSIC LIBRARY' | 'SETTINGS'
 
 export const DatabasePage: React.FC<DatabasePageProps> = ({
   settings,
+  automation,
   accessToken,
   onTokenChange,
   onSettingsUpdated,
   onDataImported,
 }) => {
+  const hasGoogleSession = Boolean(
+    accessToken || automation?.hasActiveSessionToken || automation?.headlessAutoUploadConfigured
+  );
   const [activeTab, setActiveTab] = useState<SheetTab>('VIDEO DATABASE');
   const [videos, setVideos] = useState<VideoRecord[]>([]);
   const [usedContent, setUsedContent] = useState<UsedContentRecord[]>([]);
@@ -128,7 +133,7 @@ export const DatabasePage: React.FC<DatabasePageProps> = ({
   };
 
   const executeSheetsSync = async () => {
-    if (!accessToken) {
+    if (!hasGoogleSession) {
       setErrorMsg('Please Sign in with Google first to sync to Google Sheets.');
       return;
     }
@@ -144,6 +149,7 @@ export const DatabasePage: React.FC<DatabasePageProps> = ({
       onSettingsUpdated(updated);
       setStatusMsg('Successfully synced all 4 tabs to Google Sheets.');
     } catch (err: any) {
+      await onDataImported();
       setErrorMsg(err?.message || 'Google Sheets sync failed');
     } finally {
       setSyncing(false);
@@ -170,7 +176,7 @@ export const DatabasePage: React.FC<DatabasePageProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {!accessToken && (
+          {!hasGoogleSession && (
             <GoogleSignInButton
               onClick={handleSignIn}
               disabled={connecting}
@@ -198,7 +204,7 @@ export const DatabasePage: React.FC<DatabasePageProps> = ({
           </label>
 
           <button
-            disabled={syncing || !accessToken}
+            disabled={syncing || !hasGoogleSession}
             onClick={() => setConfirmSyncOpen(true)}
             className="px-4 py-2 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 text-white text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap"
           >

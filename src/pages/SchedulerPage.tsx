@@ -70,6 +70,9 @@ export const SchedulerPage: React.FC<SchedulerPageProps> = ({
     mode: 'selected' | 'pending' | 'run_now';
   }>({ open: false, mode: 'selected' });
 
+  const hasGoogleSession = Boolean(
+    accessToken || automation?.hasActiveSessionToken || automation?.headlessAutoUploadConfigured
+  );
   const readyVideos = videos.filter((v) => v.status === 'completed' || v.status === 'scheduled');
   const pendingYouTubeVideos = videos.filter(
     (v) => v.status === 'scheduled' && !v.youtubeVideoId && Boolean(v.mp4Url)
@@ -190,7 +193,7 @@ export const SchedulerPage: React.FC<SchedulerPageProps> = ({
   };
 
   const executeSyncPending = async () => {
-    if (!accessToken) {
+    if (!hasGoogleSession) {
       setErrorMsg('Sign in with Google first to upload pending scheduled Shorts.');
       return;
     }
@@ -209,6 +212,7 @@ export const SchedulerPage: React.FC<SchedulerPageProps> = ({
         }`
       );
     } catch (err: any) {
+      await onVideosUpdated();
       setErrorMsg(err?.message || 'Pending upload sync failed');
     } finally {
       setSyncingPending(false);
@@ -263,19 +267,30 @@ export const SchedulerPage: React.FC<SchedulerPageProps> = ({
               {settings.youtubeChannel ? settings.youtubeChannel.title : 'YouTube & Google Sheets Account'}
             </div>
             <div className="text-xs text-[#9B9FB5] mt-0.5 font-mono-tabular">
-              {accessToken
+              {automation?.headlessAutoUploadConfigured
                 ? settings.youtubeChannel
-                  ? `${settings.youtubeChannel.subscriberCount} subscribers · ${settings.youtubeChannel.videoCount} videos · Google Session Active`
+                  ? `${settings.youtubeChannel.subscriberCount} subscribers · ${settings.youtubeChannel.videoCount} videos · 24/7 Unattended Auto-Upload Active`
+                  : '24/7 Unattended Auto-Upload Active (Server Refresh Token configured)'
+                : hasGoogleSession
+                ? settings.youtubeChannel
+                  ? `${settings.youtubeChannel.subscriberCount} subscribers · ${settings.youtubeChannel.videoCount} videos · Google Session Active${
+                      automation?.tokenExpiresAt
+                        ? ` (until ${new Date(automation.tokenExpiresAt).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })})`
+                        : ''
+                    }`
                   : 'Google Session Active (YouTube & Sheets permissions granted)'
                 : settings.youtubeChannel
-                ? `${settings.youtubeChannel.subscriberCount} subscribers · Sign in with Google to authorize this session`
+                ? `${settings.youtubeChannel.subscriberCount} subscribers · Sign in with Google to authorize uploads for this session`
                 : 'Sign in with Google to link your YouTube channel and Google Sheet.'}
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {accessToken ? (
+          {accessToken || automation?.hasActiveSessionToken ? (
             <button
               onClick={handleDisconnect}
               className="px-4 py-2 rounded-lg bg-[#181924] hover:bg-[#222434] border border-[#27293A] text-xs font-medium text-[#D4D6E2] flex items-center gap-1.5"
@@ -354,7 +369,7 @@ export const SchedulerPage: React.FC<SchedulerPageProps> = ({
 
             {pendingYouTubeVideos.length > 0 && (
               <button
-                disabled={syncingPending || !accessToken}
+                disabled={syncingPending || !hasGoogleSession}
                 onClick={() => setConfirmState({ open: true, mode: 'pending' })}
                 className="px-4 py-2 rounded-lg bg-[#10B981] hover:bg-[#059669] disabled:opacity-50 text-[#052E16] text-xs font-semibold inline-flex items-center gap-1.5 whitespace-nowrap"
               >
@@ -627,7 +642,7 @@ export const SchedulerPage: React.FC<SchedulerPageProps> = ({
                 <span>Schedule Locally ({selectedIds.length})</span>
               </button>
               <button
-                disabled={uploading || selectedIds.length === 0 || !accessToken}
+                disabled={uploading || selectedIds.length === 0 || !hasGoogleSession}
                 onClick={() => setConfirmState({ open: true, mode: 'selected' })}
                 className="px-3 py-2 rounded-lg bg-[#8B5CF6] hover:bg-[#7C3AED] disabled:opacity-50 text-xs font-semibold text-white flex items-center gap-1.5"
               >
@@ -750,7 +765,7 @@ export const SchedulerPage: React.FC<SchedulerPageProps> = ({
             ? 'This will upload all locally scheduled Shorts to your connected YouTube channel as private videos with their 2-hour publishAt timestamps, and sync your Google Sheet.'
             : confirmState.mode === 'run_now'
             ? `This will generate ${daily.videosPerDay} unique Shorts, render MP4s, assign ${daily.intervalHours}-hour publishing slots starting at ${daily.firstPublishTime}, and ${
-                accessToken && daily.autoUploadToYouTube
+                hasGoogleSession && daily.autoUploadToYouTube
                   ? 'upload them to YouTube & sync your Google Sheet.'
                   : 'queue them locally until you sign in with Google.'
               }`

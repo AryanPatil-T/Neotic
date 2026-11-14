@@ -61,6 +61,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   const configuredProviders = providers.filter((p) => p.role === 'text' && p.configured);
   const isRunning = job?.status === 'running';
+  const hasGoogleSession = Boolean(
+    accessToken || automation?.hasActiveSessionToken || automation?.headlessAutoUploadConfigured
+  );
 
   const handleLaunch = async (qty: number) => {
     setLaunchError(null);
@@ -173,11 +176,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="text-sm font-semibold text-white">YouTube Data API v3</div>
               <div className="text-xs text-[#9B9FB5] truncate">
                 {settings.youtubeChannel
-                  ? `${settings.youtubeChannel.title} · ${accessToken ? 'Connected' : 'Sign in to push'}${
+                  ? `${settings.youtubeChannel.title} · ${hasGoogleSession ? 'Connected' : 'Sign in to push'}${
                       automation?.pendingYouTubeUploads
                         ? ` · ${automation.pendingYouTubeUploads} pending`
                         : ''
                     }`
+                  : hasGoogleSession
+                  ? 'Google Session Active'
                   : 'Sign in with Google in Scheduler to link channel'}
               </div>
             </div>
@@ -186,7 +191,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             onClick={() => onNavigate('scheduler')}
             className="px-3.5 py-2 rounded-lg bg-[#181924] hover:bg-[#222434] border border-[#27293A] text-xs font-medium text-white whitespace-nowrap shrink-0"
           >
-            {accessToken ? 'Manage' : 'Connect'}
+            {hasGoogleSession ? 'Manage' : 'Connect'}
           </button>
         </div>
 

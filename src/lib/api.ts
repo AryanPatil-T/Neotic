@@ -20,6 +20,7 @@ export interface AutomationStatusResponse {
   nextRunDisplay: string;
   pendingYouTubeUploads: number;
   hasActiveSessionToken: boolean;
+  headlessAutoUploadConfigured?: boolean;
   tokenExpiresAt: string | null;
 }
 
@@ -236,10 +237,10 @@ export const api = {
       body: JSON.stringify({ spreadsheetUrlOrId }),
     }),
 
-  syncGoogleSheets: (accessToken: string) =>
+  syncGoogleSheets: (accessToken?: string | null) =>
     reqJson<{ spreadsheetId: string; spreadsheetUrl: string }>('/api/database/sheets-sync', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
     }),
 
   getAutomationStatus: () => reqJson<AutomationStatusResponse>('/api/automation/status'),
@@ -262,7 +263,7 @@ export const api = {
       },
     }),
 
-  syncPendingUploads: (accessToken: string) =>
+  syncPendingUploads: (accessToken?: string | null) =>
     reqJson<{
       uploadedCount: number;
       skippedCount: number;
@@ -270,7 +271,7 @@ export const api = {
       errors: string[];
     }>('/api/automation/sync-pending', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
     }),
 };
 

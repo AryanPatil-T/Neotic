@@ -59,9 +59,11 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Sync in-memory session token to server RAM while active
+  // Sync active in-memory token to server RAM when signed in (never wipe server session on initial mount)
   useEffect(() => {
-    api.setAutomationSessionToken(googleToken).catch(() => {});
+    if (googleToken) {
+      api.setAutomationSessionToken(googleToken).catch(() => {});
+    }
   }, [googleToken]);
 
   // Auto-sync browser timezone on first load if server defaulted to UTC
@@ -115,8 +117,14 @@ export default function App() {
         imageSource: overview.settings.defaultImageSource,
         engine: overview.settings.activeEngine,
         quoteTone: overview.settings.defaultQuoteTone,
-        visualStyles: ['Dark Cinematic Motivation', 'Lone Wolf', 'Mountain Solitude'],
-        categories: ['Timeless Wisdom', 'Epic Strategy', 'Life Lessons'],
+        visualStyles:
+          overview.settings.selectedVisualStyles && overview.settings.selectedVisualStyles.length > 0
+            ? overview.settings.selectedVisualStyles
+            : ['Dark Cinematic Motivation', 'Lone Wolf', 'Mountain Solitude'],
+        categories:
+          overview.settings.selectedCategories && overview.settings.selectedCategories.length > 0
+            ? overview.settings.selectedCategories
+            : ['Timeless Wisdom', 'Epic Strategy', 'Life Lessons'],
         bwMonochrome: overview.settings.bwMonochrome,
         autoUploadSchedule: overview.settings.autoUploadSchedule,
       },
@@ -247,6 +255,7 @@ export default function App() {
       {route === 'database' && (
         <DatabasePage
           settings={overview.settings}
+          automation={overview.automation}
           accessToken={googleToken}
           onTokenChange={setGoogleToken}
           onSettingsUpdated={handleSettingsUpdated}

@@ -23,3 +23,13 @@ services:
         sync: false
       - key: AUTOMATION_WEBHOOK_SECRET
         generateValue: true
+      - key: GOOGLE_SHEET_URL
+        sync: false
+      - key: AUTOMATION_TIMEZONE
+        value: "Asia/Kolkata"
+      - key: YOUTUBE_CLIENT_ID
+        sync: false
+      - key: YOUTUBE_CLIENT_SECRET
+        sync: false
+      - key: YOUTUBE_REFRESH_TOKEN
+        sync: false

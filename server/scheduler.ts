@@ -203,10 +203,11 @@ export async function uploadShortToYouTube(params: {
   publishAtIso?: string | null;
 }): Promise<{ youtubeVideoId: string }> {
   const { video, accessToken, publishAtIso } = params;
-  const mp4File = path.basename(video.mp4Url.split('?')[0]);
-  const mp4Path = path.join(VIDEOS_DIR, mp4File);
-  if (!fs.existsSync(mp4Path)) {
-    throw new Error('Rendered MP4 file not found on disk. Re-render the video first.');
+  const rawMp4 = (video.mp4Url || '').split('?')[0].trim();
+  const mp4File = rawMp4 ? path.basename(rawMp4) : '';
+  const mp4Path = mp4File ? path.join(VIDEOS_DIR, mp4File) : '';
+  if (!mp4Path || !fs.existsSync(mp4Path) || !fs.statSync(mp4Path).isFile()) {
+    throw new Error('Rendered MP4 file not found on disk (already cleaned up or not rendered yet).');
   }
 
   const videoBytes = fs.readFileSync(mp4Path);
@@ -293,7 +294,7 @@ export function cleanupUploadedMediaFiles(video: VideoRecord): VideoRecord {
 
   for (const filePath of candidates) {
     try {
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) fs.unlinkSync(filePath);
     } catch {
       // non-fatal cleanup error
     }
@@ -308,9 +309,10 @@ export function cleanupUploadedMediaFiles(video: VideoRecord): VideoRecord {
   for (const url of imgUrls) {
     const clean = url.split('?')[0];
     if (clean.startsWith('/media/images/')) {
-      const imgPath = path.join(IMAGES_DIR, path.basename(clean));
+      const base = path.basename(clean);
+      const imgPath = base ? path.join(IMAGES_DIR, base) : '';
       try {
-        if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+        if (imgPath && fs.existsSync(imgPath) && fs.statSync(imgPath).isFile()) fs.unlinkSync(imgPath);
       } catch {
         // non-fatal cleanup error
       }
